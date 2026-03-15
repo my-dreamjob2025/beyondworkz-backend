@@ -40,11 +40,9 @@ const employeeProfileSchema = new mongoose.Schema(
 
     blueCollarDetails: {
       hasVehicleWashingExperience: Boolean,
-
       hasBikeOrScooty: Boolean,
-
       hasDrivingLicense: Boolean,
-
+      drivingLicenseNumber: { type: String, trim: true, maxlength: 50 },
       preferredAreas: [String],
     },
 

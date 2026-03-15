@@ -3,6 +3,7 @@ import { Router } from "express";
 import { registerEmployee } from "../controllers/auth/employee/register.js";
 import { loginEmployee } from "../controllers/auth/employee/login.js";
 import { verifyEmployeeOtp } from "../controllers/auth/employee/verifyOtp.js";
+import { redirectToGoogle, handleGoogleCallback } from "../controllers/auth/employee/googleOAuth.js";
 
 import { registerEmployer } from "../controllers/auth/employer/register.js";
 import { loginEmployer } from "../controllers/auth/employer/login.js";
@@ -18,6 +19,8 @@ const router = Router();
 router.post("/employee/register", registerEmployee);
 router.post("/employee/login", loginEmployee);
 router.post("/employee/verify-otp", verifyEmployeeOtp);
+router.get("/google", redirectToGoogle);
+router.get("/google/callback", handleGoogleCallback);
 
 // Employer auth
 router.post("/employer/register", registerEmployer);

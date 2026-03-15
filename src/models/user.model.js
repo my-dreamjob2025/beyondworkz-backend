@@ -14,6 +14,8 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
+    googleId: { type: String, sparse: true, select: false },
+
     role: {
       type: String,
       enum: ["employee", "employer", "admin"],
@@ -23,9 +25,7 @@ const userSchema = new mongoose.Schema(
     employeeType: {
       type: String,
       enum: ["whitecollar", "bluecollar"],
-      required: function () {
-        return this.role === "employee";
-      },
+      default: null,
     },
 
     firstName: { type: String, trim: true },
@@ -55,6 +55,7 @@ const userSchema = new mongoose.Schema(
 
     // Profile
     isEmailVerified: { type: Boolean, default: false },
+    isPhoneVerified: { type: Boolean, default: false },
     profileCompletion: { type: Number, default: 0, min: 0, max: 100 },
   },
   {

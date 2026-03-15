@@ -14,6 +14,10 @@ const env = {
   awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
   awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
   sesFromEmail: process.env.SES_FROM_EMAIL || "",
+  s3Bucket: process.env.S3_BUCKET || "",
+  s3PublicPrefix: process.env.S3_PUBLIC_PREFIX || "",
+  resumeMaxBytes: Number(process.env.RESUME_MAX_BYTES) || 5 * 1024 * 1024,
+  presignExpiresSeconds: Number(process.env.PRESIGN_EXPIRES_SECONDS) || 300,
 };
 
 export default env;

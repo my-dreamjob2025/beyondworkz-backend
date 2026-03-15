@@ -1,15 +1,9 @@
 import User from "../../../models/user.model.js";
-import Session from "../../../models/session.model.js";
 import { sendResponse } from "../../../utils/response.js";
 import { signAccess, signRefresh } from "../../../utils/jwt.js";
-import crypto from "crypto";
-import bcrypt from "bcryptjs";
 
 const MAX_OTP_ATTEMPTS = 5;
 const PANEL = "employee";
-const RT = "rt_employee";
-const SID = "sid_employee";
-const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const verifyEmployeeOtp = async (req, res) => {
   try {
@@ -42,17 +36,7 @@ export const verifyEmployeeOtp = async (req, res) => {
       });
     }
 
-    const sessionId = crypto.randomUUID();
-    const refreshToken = signRefresh({ id: user._id, sessionId });
-
-    await Session.create({
-      user: user._id,
-      sessionId,
-      refreshTokenHash: await bcrypt.hash(refreshToken, 10),
-      panel: PANEL,
-      userAgent: req.headers["user-agent"] || "",
-      expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
-    });
+    const refreshToken = signRefresh({ id: user._id, role: user.role, panel: PANEL });
 
     const accessToken = signAccess({
       id: user._id,
@@ -62,24 +46,10 @@ export const verifyEmployeeOtp = async (req, res) => {
       profileCompletion: user.profileCompletion || 0,
     });
 
-    const isProd = process.env.NODE_ENV === "production";
-
-    res.cookie(RT, refreshToken, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? "none" : "lax",
-      maxAge: REFRESH_TTL_MS,
-    });
-
-    res.cookie(SID, sessionId, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? "none" : "lax",
-      maxAge: REFRESH_TTL_MS,
-    });
-
     return sendResponse(res, 200, true, {
       accessToken,
+      refreshToken,
+      expiresIn: 900,
       user: {
         id: user._id,
         email: user.email,

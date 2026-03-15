@@ -2,10 +2,20 @@ import User from "../../../models/user.model.js";
 import { sendEmailWithSES } from "../../../config/ses.js";
 import { sendResponse } from "../../../utils/response.js";
 import { loginOtpHtmlTemplate } from "../../../templates/loginOtpTemplate.js";
+import { signupOtpHtmlTemplate } from "../../../templates/signupOtpTemplate.js";
+import { employerLoginEmailTemplate } from "../../../templates/employer/employerLoginTemplate.js";
+import { employerRegisterEmailTemplate } from "../../../templates/employer/employerRegisterTemplate.js";
+
+const TEMPLATES = {
+  login: loginOtpHtmlTemplate,
+  signup: signupOtpHtmlTemplate,
+  employer_login: employerLoginEmailTemplate,
+  employer_register: employerRegisterEmailTemplate,
+};
 
 export const resendOtp = async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, type = "login" } = req.body;
 
     if (!email) {
       return sendResponse(res, 400, false, { message: "Email is required." });
@@ -30,7 +40,8 @@ export const resendOtp = async (req, res) => {
     }
 
     const otp = await user.generateOTP();
-    const html = loginOtpHtmlTemplate({ otp, firstName: user.firstName || "" });
+    const templateFn = TEMPLATES[type] || loginOtpHtmlTemplate;
+    const html = templateFn({ otp, firstName: user.firstName || "" });
 
     await sendEmailWithSES({
       to: normEmail,

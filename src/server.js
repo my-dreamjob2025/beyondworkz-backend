@@ -1,13 +1,18 @@
 import app from "./app.js";
 import connectDB from "./config/db.js";
 import env from "./config/env.js";
-import logger from "./config/logger.js";
+import { BUCKET } from "./config/s3.config.js";
 
 const startServer = async () => {
   await connectDB();
 
   app.listen(env.port, () => {
-    logger.info(`Server running on port ${env.port}`);
+    console.log(`Server running on port ${env.port}`);
+    if (BUCKET) {
+      console.log(`S3 storage: enabled (bucket: ${BUCKET})`);
+    } else {
+      console.log("S3 storage: disabled (using local uploads/)");
+    }
   });
 };
 
