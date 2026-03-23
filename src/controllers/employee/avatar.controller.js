@@ -111,8 +111,10 @@ export const confirmAvatar = async (req, res) => {
       contentType: contentType || "image/jpeg",
       uploadedAt: new Date(),
     };
-    user.avatar = avatarData;
-    await user.save();
+    // Update avatar without re-validating the whole `User` document.
+    // `User.workStatus` is an enum, and some users may currently have `workStatus: ""`
+    // in DB, which would make `user.save()` fail even though avatar update is independent.
+    await User.updateOne({ _id: userId }, { $set: { avatar: avatarData } });
 
     const dataForClient = await avatarWithPresignedUrl(avatarData);
 

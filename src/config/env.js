@@ -11,8 +11,10 @@ const env = {
   accessExpires: process.env.ACCESS_EXPIRES || "15m",
   refreshExpires: process.env.REFRESH_EXPIRES || "7d",
   awsRegion: process.env.AWS_REGION || "",
-  awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-  awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+  awsAccessKeyId:
+    process.env.AWS_S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID || "",
+  awsSecretAccessKey:
+    process.env.AWS_S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY || "",
   sesFromEmail: process.env.SES_FROM_EMAIL || "",
   s3Bucket: process.env.S3_BUCKET || "",
   s3PublicPrefix: process.env.S3_PUBLIC_PREFIX || "",

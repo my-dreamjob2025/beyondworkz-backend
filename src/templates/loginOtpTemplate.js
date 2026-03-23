@@ -9,7 +9,8 @@ export function loginOtpHtmlTemplate({ otp, firstName = "" }) {
     title: "Your Login Code",
     subtitle: "",
     greeting,
-    bodyHtml: "",
+    bodyHtml:
+      '<p style="margin:0 0 16px;font-size:14px;color:#475569;">Use this one-time code to securely sign in to your employee account.</p>',
     otp,
     footerText: "© Beyond Workz. If you didn't request this, you can safely ignore this email.",
     panel: "",

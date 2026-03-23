@@ -1,5 +1,5 @@
 import User from "../../../models/user.model.js";
-import { sendEmailWithSES } from "../../../config/ses.js";
+import { sendOtpEmail } from "../../../config/ses.js";
 import { sendResponse } from "../../../utils/response.js";
 import { employerLoginEmailTemplate } from "../../../templates/employer/employerLoginTemplate.js";
 
@@ -51,10 +51,12 @@ export const loginEmployer = async (req, res) => {
     const otp = await user.generateOTP();
     const html = employerLoginEmailTemplate({ otp, firstName: user.firstName || "" });
 
-    await sendEmailWithSES({
+    await sendOtpEmail({
       to: normEmail,
       subject: "Your Employer Login OTP - Beyond Workz",
       html,
+      otp,
+      label: "Employer login",
     });
 
     return sendResponse(res, 200, true, {

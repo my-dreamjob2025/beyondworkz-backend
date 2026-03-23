@@ -123,7 +123,13 @@ export const updateProfile = async (req, res) => {
     if (lastName !== undefined) userUpdate.lastName = String(lastName ?? "").trim();
     if (phone !== undefined) userUpdate.phone = String(phone ?? "").trim();
     if (city !== undefined) userUpdate.city = String(city ?? "").trim();
-    if (workStatus !== undefined) userUpdate.workStatus = workStatus;
+    if (workStatus !== undefined) {
+      // `workStatus` is an enum: only allow valid enum values.
+      // If frontend sends "" (not selected), don't store it (it breaks later `user.save()` validation).
+      if (workStatus && ["Fresher", "Experienced"].includes(workStatus)) {
+        userUpdate.workStatus = workStatus;
+      }
+    }
     if (years !== undefined) {
       const y = parseInt(years, 10);
       userUpdate.years = !isNaN(y) && y >= 0 && y <= 30 ? String(y).padStart(2, "0") : "00";

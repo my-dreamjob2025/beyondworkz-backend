@@ -1,6 +1,8 @@
 import User from "../../../models/user.model.js";
+import EmployerProfile from "../../../models/employerProfile.model.js";
 import { sendResponse } from "../../../utils/response.js";
 import { signAccess, signRefresh } from "../../../utils/jwt.js";
+import { computeEmployerCompletion } from "../../../utils/employerCompletion.js";
 
 const MAX_OTP_ATTEMPTS = 5;
 const PANEL = "employer";
@@ -36,13 +38,31 @@ export const verifyEmployerOtp = async (req, res) => {
       });
     }
 
+    let employerProfile = null;
+    if (user.companyProfile) {
+      employerProfile = await EmployerProfile.findById(user.companyProfile);
+    }
+
+    if (!employerProfile) {
+      employerProfile = await EmployerProfile.findOneAndUpdate(
+        { user: user._id },
+        { $setOnInsert: { user: user._id } },
+        { upsert: true, new: true }
+      );
+      await User.findByIdAndUpdate(user._id, { companyProfile: employerProfile._id });
+    }
+
+    const fullUser = await User.findById(user._id).lean();
+    const profileCompletion = computeEmployerCompletion(fullUser, employerProfile);
+    await User.findByIdAndUpdate(user._id, { profileCompletion });
+
     const refreshToken = signRefresh({ id: user._id, role: user.role, panel: PANEL });
 
     const accessToken = signAccess({
       id: user._id,
       email: user.email,
       role: user.role,
-      profileCompletion: user.profileCompletion || 0,
+      profileCompletion,
     });
 
     return sendResponse(res, 200, true, {
@@ -52,10 +72,10 @@ export const verifyEmployerOtp = async (req, res) => {
       user: {
         id: user._id,
         email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
+        firstName: fullUser.firstName,
+        lastName: fullUser.lastName,
         role: user.role,
-        profileCompletion: user.profileCompletion || 0,
+        profileCompletion,
       },
     });
   } catch (err) {

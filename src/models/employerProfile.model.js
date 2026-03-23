@@ -38,12 +38,27 @@ const employerProfileSchema = new mongoose.Schema(
       foundedYear: Number,
 
       description: String,
+
+      /** Single-line HQ label from onboarding (optional; address.city may also be used) */
+      headquarters: { type: String, trim: true },
+    },
+
+    hiringPreferences: {
+      defaultJobLocation: { type: String, trim: true },
+      defaultEmploymentType: { type: String, trim: true },
+      applicationEmail: { type: String, trim: true },
+      responseSLA: { type: String, trim: true },
+      autoArchiveInactiveJobs: { type: Boolean, default: false },
     },
 
     companySocialMedia: {
       linkedin: String,
 
       website: String,
+
+      glassdoor: String,
+
+      careersPage: String,
 
       logo: {
         url: String,
@@ -72,12 +87,14 @@ const employerProfileSchema = new mongoose.Schema(
 
     recruiters: [
       {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
         firstName: String,
         lastName: String,
         position: String,
         contact: String,
         email: String,
         linkedin: String,
+        status: { type: String, enum: ["invited", "active"], default: "invited" },
       },
     ],
 

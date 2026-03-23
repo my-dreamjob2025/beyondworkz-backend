@@ -1,6 +1,9 @@
 /**
  * S3 configuration for beyond-workz bucket
- * Uses same credentials as jobportal-backend (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+ *
+ * Credentials (first match wins):
+ *   AWS_S3_ACCESS_KEY_ID / AWS_S3_SECRET_ACCESS_KEY — recommended (separate from SES)
+ *   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY — legacy fallback
  *
  * Bucket structure (naming convention):
  * - employee/{userId}/avatar/{timestamp}_{random}_{filename}  - Profile pictures
@@ -18,13 +21,18 @@ const S3_PUBLIC_PREFIX =
   process.env.S3_PUBLIC_PREFIX ||
   (BUCKET ? `https://${BUCKET}.s3.${REGION}.amazonaws.com` : "");
 
+const s3AccessKeyId =
+  process.env.AWS_S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
+const s3SecretAccessKey =
+  process.env.AWS_S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
+
 const s3Config = {
   region: REGION,
-  ...(process.env.AWS_ACCESS_KEY_ID &&
-    process.env.AWS_SECRET_ACCESS_KEY && {
+  ...(s3AccessKeyId &&
+    s3SecretAccessKey && {
       credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        accessKeyId: s3AccessKeyId,
+        secretAccessKey: s3SecretAccessKey,
       },
     }),
 };

@@ -31,6 +31,10 @@ const userSchema = new mongoose.Schema(
     firstName: { type: String, trim: true },
     lastName: { type: String, trim: true },
     phone: { type: String, trim: true },
+    /** Employer contact / title (recruiter card) */
+    jobTitle: { type: String, trim: true },
+    department: { type: String, trim: true },
+    timezone: { type: String, trim: true },
     city: { type: String, trim: true },
     workStatus: { type: String, enum: ["Fresher", "Experienced"] },
     years: { type: String, default: "00" },
@@ -39,6 +43,14 @@ const userSchema = new mongoose.Schema(
     avatar: {
       key: { type: String },
       url: { type: String },
+    },
+
+    // For employer users, points to the shared company profile document.
+    companyProfile: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "EmployerProfile",
+      default: null,
+      index: true,
     },
 
     whatsappConsent: { type: Boolean, default: false },
@@ -63,6 +75,19 @@ const userSchema = new mongoose.Schema(
     versionKey: false,
   }
 );
+
+// If `workStatus` accidentally gets stored as "" (empty string) or any other invalid
+// value, Mongoose enum validation will fail on `user.save()` (e.g. OTP flows).
+// Sanitize before every save to make avatar/profile updates independent.
+userSchema.pre("save", function (next) {
+  const valid = ["Fresher", "Experienced"];
+  if (typeof this.workStatus === "string") {
+    if (!valid.includes(this.workStatus)) {
+      this.workStatus = undefined;
+    }
+  }
+  next();
+});
 
 userSchema.index({ role: 1 });
 userSchema.index({ employeeType: 1 });

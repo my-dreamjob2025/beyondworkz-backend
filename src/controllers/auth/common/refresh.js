@@ -25,7 +25,9 @@ export const refresh = async (req, res) => {
       return sendResponse(res, 401, false, { message: "Invalid refresh token." });
     }
 
-    const user = await User.findById(id).select("email firstName lastName role employeeType profileCompletion avatar");
+    const user = await User.findById(id).select(
+      "email firstName lastName role employeeType profileCompletion avatar phone city jobTitle department timezone"
+    );
     if (!user || user.role !== role) {
       return sendResponse(res, 403, false, { message: "User not found or invalid." });
     }
@@ -56,6 +58,11 @@ export const refresh = async (req, res) => {
         employeeType: user.employeeType,
         profileCompletion: user.profileCompletion || 0,
         avatar,
+        phone: user.phone,
+        city: user.city,
+        jobTitle: user.jobTitle,
+        department: user.department,
+        timezone: user.timezone,
       },
     });
   } catch (err) {

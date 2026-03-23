@@ -1,5 +1,5 @@
 import User from "../../../models/user.model.js";
-import { sendEmailWithSES } from "../../../config/ses.js";
+import { sendOtpEmail } from "../../../config/ses.js";
 import { sendResponse } from "../../../utils/response.js";
 import { loginOtpHtmlTemplate } from "../../../templates/loginOtpTemplate.js";
 import { signupOtpHtmlTemplate } from "../../../templates/signupOtpTemplate.js";
@@ -43,10 +43,12 @@ export const resendOtp = async (req, res) => {
     const templateFn = TEMPLATES[type] || loginOtpHtmlTemplate;
     const html = templateFn({ otp, firstName: user.firstName || "" });
 
-    await sendEmailWithSES({
+    await sendOtpEmail({
       to: normEmail,
       subject: "Your Verification Code (Resend) - Beyond Workz",
       html,
+      otp,
+      label: `Resend OTP (${type})`,
     });
 
     return sendResponse(res, 200, true, { message: "OTP resent successfully." });

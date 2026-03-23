@@ -1,5 +1,5 @@
 import User from "../../../models/user.model.js";
-import { sendEmailWithSES } from "../../../config/ses.js";
+import { sendOtpEmail } from "../../../config/ses.js";
 import { sendResponse } from "../../../utils/response.js";
 import { employerRegisterEmailTemplate } from "../../../templates/employer/employerRegisterTemplate.js";
 
@@ -48,10 +48,12 @@ export const registerEmployer = async (req, res) => {
     const otp = await user.generateOTP();
     const html = employerRegisterEmailTemplate({ otp });
 
-    await sendEmailWithSES({
+    await sendOtpEmail({
       to: normEmail,
       subject: "Verify Your Email - Beyond Workz Employer Registration",
       html,
+      otp,
+      label: "Employer registration",
     });
 
     return sendResponse(res, 200, true, {
@@ -59,8 +61,12 @@ export const registerEmployer = async (req, res) => {
     });
   } catch (err) {
     console.error("registerEmployer error:", err);
+    const hint =
+      process.env.NODE_ENV === "development"
+        ? " Check server logs; if SES is misconfigured, OTP is printed when email send fails."
+        : "";
     return sendResponse(res, 500, false, {
-      message: "Registration failed. Please try again.",
+      message: `Registration failed. Please try again.${hint}`,
     });
   }
 };
