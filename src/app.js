@@ -22,10 +22,18 @@ const app = express();
 
 app.use(helmet({ contentSecurityPolicy: false }));
 
+const parseOrigins = (value) =>
+  String(value || "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
-  process.env.CLIENT_URL,
+  ...parseOrigins(process.env.CLIENT_URL),
+  ...parseOrigins(process.env.CLIENT_URLS),
+  ...parseOrigins(process.env.EMPLOYER_URL),
 ].filter(Boolean);
 
 app.use(
@@ -37,6 +45,7 @@ app.use(
         callback(new Error("Not allowed by CORS"));
       }
     },
+    optionsSuccessStatus: 204,
   })
 );
 
