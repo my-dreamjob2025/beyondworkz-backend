@@ -5,12 +5,14 @@ import { loginOtpHtmlTemplate } from "../../../templates/loginOtpTemplate.js";
 import { signupOtpHtmlTemplate } from "../../../templates/signupOtpTemplate.js";
 import { employerLoginEmailTemplate } from "../../../templates/employer/employerLoginTemplate.js";
 import { employerRegisterEmailTemplate } from "../../../templates/employer/employerRegisterTemplate.js";
+import { adminLoginEmailTemplate } from "../../../templates/admin/adminLoginTemplate.js";
 
 const TEMPLATES = {
   login: loginOtpHtmlTemplate,
   signup: signupOtpHtmlTemplate,
   employer_login: employerLoginEmailTemplate,
   employer_register: employerRegisterEmailTemplate,
+  admin_login: adminLoginEmailTemplate,
 };
 
 export const resendOtp = async (req, res) => {
@@ -29,6 +31,10 @@ export const resendOtp = async (req, res) => {
 
     if (!user) {
       return sendResponse(res, 404, false, { message: "User not found." });
+    }
+
+    if (type === "admin_login" && user.role !== "admin") {
+      return sendResponse(res, 403, false, { message: "Invalid account." });
     }
 
     if (user.otpResendAfter && new Date() < user.otpResendAfter) {
