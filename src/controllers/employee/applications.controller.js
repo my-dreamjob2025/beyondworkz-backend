@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import JobApplication from "../../models/jobApplication.model.js";
 import { sendResponse } from "../../utils/response.js";
+import { formatScreeningForClient } from "../../utils/applicationScreening.js";
 
 function companyLabel(job) {
   if (!job) return "Employer";
@@ -53,12 +54,19 @@ export const listMyApplications = async (req, res) => {
 
     const items = rows.map((row) => {
       const job = row.job;
+      const cl = row.coverLetter && String(row.coverLetter).trim();
+      const scr = row.screening;
+      const hasExtra =
+        !!cl ||
+        (scr?.customAnswers && scr.customAnswers.length) ||
+        (scr?.acknowledgments && Object.keys(scr.acknowledgments).some((k) => scr.acknowledgments[k]));
       return {
         id: row._id,
         status: row.status,
         statusLabel: statusLabel(row.status),
         appliedAt: row.createdAt,
         updatedAt: row.updatedAt,
+        hasApplicationDetails: !!hasExtra,
         job: job
           ? {
               id: job._id,
@@ -82,5 +90,56 @@ export const listMyApplications = async (req, res) => {
   } catch (err) {
     console.error("listMyApplications error:", err);
     return sendResponse(res, 500, false, { message: "Failed to load applications." });
+  }
+};
+
+/** GET /employee/applications/:applicationId — full detail for applicant only */
+export const getMyApplicationById = async (req, res) => {
+  try {
+    const { applicationId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(applicationId)) {
+      return sendResponse(res, 400, false, { message: "Invalid application id." });
+    }
+
+    const row = await JobApplication.findOne({
+      _id: applicationId,
+      applicant: req.user.id,
+    })
+      .populate({
+        path: "job",
+        select: "title city area status hiringFor",
+      })
+      .lean();
+
+    if (!row) {
+      return sendResponse(res, 404, false, { message: "Application not found." });
+    }
+
+    const job = row.job;
+    return sendResponse(res, 200, true, {
+      application: {
+        id: row._id,
+        status: row.status,
+        statusLabel: statusLabel(row.status),
+        appliedAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        coverLetter: row.coverLetter ? String(row.coverLetter) : "",
+        screening: formatScreeningForClient(row.screening),
+        job: job
+          ? {
+              id: job._id,
+              title: job.title || "Role",
+              city: job.city,
+              area: job.area,
+              hiringFor: job.hiringFor,
+              listingStatus: job.status,
+            }
+          : null,
+        companyLabel: companyLabel(job),
+      },
+    });
+  } catch (err) {
+    console.error("getMyApplicationById error:", err);
+    return sendResponse(res, 500, false, { message: "Failed to load application." });
   }
 };

@@ -16,30 +16,15 @@ import employerRoutes from "./routes/employer.routes.js";
 import jobRoutes from "./routes/job.routes.js";
 import applicationRoutes from "./routes/application.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import notificationRoutes from "./routes/notification.routes.js";
 import errorMiddleware from "./middlewares/error.middleware.js";
+import { getAllowedOrigins } from "./config/corsOrigins.js";
 
 const app = express();
 
 app.use(helmet({ contentSecurityPolicy: false }));
 
-const parseOrigins = (value) =>
-  String(value || "")
-    .split(",")
-    .map((v) => v.trim())
-    .filter(Boolean);
-
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:5175",
-  "http://localhost:5176",
-  "http://localhost:3000",
-  ...parseOrigins(process.env.CLIENT_URL),
-  ...parseOrigins(process.env.CLIENT_URLS),
-  ...parseOrigins(process.env.EMPLOYER_URL),
-  ...parseOrigins(process.env.EMPLOYEE_URL),
-  ...parseOrigins(process.env.ADMIN_URL),
-].filter(Boolean);
+const allowedOrigins = getAllowedOrigins();
 
 app.use(
   cors({
@@ -53,7 +38,7 @@ app.use(
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Accept"],
     optionsSuccessStatus: 204,
-  })
+  }),
 );
 
 app.use(express.json());
@@ -80,7 +65,10 @@ const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: parseInt(process.env.AUTH_RATE_LIMIT_MAX || "200", 10),
   skip: () => !authRateLimitActive,
-  message: { success: false, message: "Too many requests. Please try again later." },
+  message: {
+    success: false,
+    message: "Too many requests. Please try again later.",
+  },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -90,6 +78,7 @@ app.use("/api/employer", employerRoutes);
 app.use("/api/jobs", jobRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/admin", authLimiter, adminRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });

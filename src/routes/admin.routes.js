@@ -6,6 +6,7 @@ import { adminMe } from "../controllers/admin/me.controller.js";
 import { listEmployers, getEmployerById } from "../controllers/admin/employers.controller.js";
 import { listJobSeekers, getJobSeekerById } from "../controllers/admin/jobSeekers.controller.js";
 import { getDashboardStats } from "../controllers/admin/dashboard.controller.js";
+import { listApplications, getApplicationById } from "../controllers/admin/applications.controller.js";
 
 const router = Router();
 
@@ -18,5 +19,7 @@ router.get("/employers", requireAdmin, listEmployers);
 router.get("/employers/:id", requireAdmin, getEmployerById);
 router.get("/job-seekers", requireAdmin, listJobSeekers);
 router.get("/job-seekers/:id", requireAdmin, getJobSeekerById);
+router.get("/applications", requireAdmin, listApplications);
+router.get("/applications/:id", requireAdmin, getApplicationById);
 
 export default router;

@@ -1,6 +1,28 @@
 import mongoose from "mongoose";
+import { COVER_LETTER_MAX } from "../utils/applicationScreening.js";
 
 const STATUSES = ["submitted", "shortlisted", "interview_scheduled", "rejected", "hired"];
+
+const screeningAnswerSchema = new mongoose.Schema(
+  {
+    question: { type: String, trim: true, default: "" },
+    answer: { type: String, trim: true, default: "" },
+  },
+  { _id: false }
+);
+
+const applicationScreeningSchema = new mongoose.Schema(
+  {
+    acknowledgments: {
+      experience: { type: Boolean, default: undefined },
+      locationComfort: { type: Boolean, default: undefined },
+      immediateJoin: { type: Boolean, default: undefined },
+      salaryComfort: { type: Boolean, default: undefined },
+    },
+    customAnswers: { type: [screeningAnswerSchema], default: [] },
+  },
+  { _id: false }
+);
 
 const jobApplicationSchema = new mongoose.Schema(
   {
@@ -27,6 +49,15 @@ const jobApplicationSchema = new mongoose.Schema(
       enum: STATUSES,
       default: "submitted",
       index: true,
+    },
+    coverLetter: {
+      type: String,
+      maxlength: COVER_LETTER_MAX,
+      default: "",
+    },
+    screening: {
+      type: applicationScreeningSchema,
+      default: undefined,
     },
   },
   { timestamps: true, versionKey: false }

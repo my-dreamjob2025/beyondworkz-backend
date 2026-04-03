@@ -2,6 +2,16 @@ import mongoose from "mongoose";
 import JobApplication from "../../models/jobApplication.model.js";
 import JobPost from "../../models/jobPost.model.js";
 import { sendResponse } from "../../utils/response.js";
+import { formatScreeningForClient } from "../../utils/applicationScreening.js";
+import { createNotificationForUser } from "../../services/notification.service.js";
+
+const STATUS_LABELS = {
+  submitted: "Submitted",
+  shortlisted: "Shortlisted",
+  interview_scheduled: "Interview scheduled",
+  rejected: "Rejected",
+  hired: "Hired",
+};
 
 function applicantLabel(user) {
   if (!user) return "Candidate";
@@ -135,6 +145,70 @@ export const listEmployerApplications = async (req, res) => {
   }
 };
 
+/** GET /employer/applications/:applicationId — full application for employer */
+export const getEmployerApplicationById = async (req, res) => {
+  try {
+    const employerId = req.user.id;
+    const { applicationId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(applicationId)) {
+      return sendResponse(res, 400, false, { message: "Invalid application id." });
+    }
+
+    const row = await JobApplication.findOne({
+      _id: applicationId,
+      employer: employerId,
+    })
+      .populate("job", "title city area minExperience jobType status hiringFor")
+      .populate("applicant", "firstName lastName email phone city workStatus years months")
+      .lean();
+
+    if (!row) {
+      return sendResponse(res, 404, false, { message: "Application not found." });
+    }
+
+    const u = row.applicant;
+    const expParts = [];
+    if (u?.workStatus) expParts.push(u.workStatus);
+    if (u?.years && u.years !== "00") expParts.push(`${u.years}y`);
+    if (u?.months && u.months !== "00") expParts.push(`${u.months}m`);
+
+    const job = row.job;
+    return sendResponse(res, 200, true, {
+      application: {
+        id: row._id,
+        status: row.status,
+        appliedAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        coverLetter: row.coverLetter ? String(row.coverLetter) : "",
+        screening: formatScreeningForClient(row.screening),
+        job: job
+          ? {
+              id: job._id,
+              title: job.title,
+              city: job.city,
+              area: job.area,
+              minExperience: job.minExperience,
+              jobType: job.jobType,
+              hiringFor: job.hiringFor,
+            }
+          : null,
+        candidate: {
+          id: u?._id,
+          name: applicantLabel(u),
+          email: u?.email,
+          phone: u?.phone,
+          city: u?.city,
+          experience: expParts.length ? expParts.join(" · ") : "—",
+        },
+      },
+    });
+  } catch (err) {
+    console.error("getEmployerApplicationById error:", err);
+    return sendResponse(res, 500, false, { message: "Failed to load application." });
+  }
+};
+
 /** PATCH /employer/applications/:applicationId/status — update pipeline status */
 export const patchApplicationStatus = async (req, res) => {
   try {
@@ -160,6 +234,25 @@ export const patchApplicationStatus = async (req, res) => {
 
     app.status = status;
     await app.save();
+    await app.populate([{ path: "job", select: "title" }]);
+
+    const jobTitle = app.job?.title || "the role";
+    const statusLabel = STATUS_LABELS[status] || status;
+    try {
+      await createNotificationForUser({
+        userId: app.applicant,
+        type: "application_status",
+        title: "Application status updated",
+        message: `Your application for “${jobTitle}” is now ${statusLabel}.`,
+        meta: {
+          applicationId: String(app._id),
+          jobId: String(app.job?._id || app.job),
+          status,
+        },
+      });
+    } catch (notifyErr) {
+      console.error("patchApplicationStatus notify error:", notifyErr);
+    }
 
     return sendResponse(res, 200, true, {
       message: "Status updated.",

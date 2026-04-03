@@ -17,6 +17,7 @@ import {
   getApplicationSummary,
   listRecentApplications,
   listEmployerApplications,
+  getEmployerApplicationById,
   patchApplicationStatus,
 } from "../controllers/employer/jobApplications.controller.js";
 
@@ -35,6 +36,7 @@ router.patch("/jobs/:jobId/status", authMiddleware, requireEmployer, patchEmploy
 router.get("/applications/summary", authMiddleware, requireEmployer, getApplicationSummary);
 router.get("/applications/recent", authMiddleware, requireEmployer, listRecentApplications);
 router.get("/applications", authMiddleware, requireEmployer, listEmployerApplications);
+router.get("/applications/:applicationId", authMiddleware, requireEmployer, getEmployerApplicationById);
 router.patch(
   "/applications/:applicationId/status",
   authMiddleware,

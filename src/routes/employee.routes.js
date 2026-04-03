@@ -2,7 +2,7 @@ import { Router } from "express";
 import authMiddleware from "../middlewares/auth.middleware.js";
 import requireEmployee from "../middlewares/employee.middleware.js";
 import { getProfile, updateProfile } from "../controllers/employee/profile.controller.js";
-import { listMyApplications } from "../controllers/employee/applications.controller.js";
+import { listMyApplications, getMyApplicationById } from "../controllers/employee/applications.controller.js";
 import {
   getPresign,
   confirmResume,
@@ -26,6 +26,7 @@ router.get("/profile", authMiddleware, getProfile);
 router.put("/profile", authMiddleware, updateProfile);
 
 router.get("/applications", authMiddleware, requireEmployee, listMyApplications);
+router.get("/applications/:applicationId", authMiddleware, requireEmployee, getMyApplicationById);
 
 /* Resume upload - S3 presigned URL flow when S3_BUCKET is set */
 router.post("/resume/presign", authMiddleware, validateResumeBody(presignSchema), getPresign);
