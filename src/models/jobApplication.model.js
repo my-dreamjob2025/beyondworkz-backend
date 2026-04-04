@@ -59,6 +59,11 @@ const jobApplicationSchema = new mongoose.Schema(
       type: applicationScreeningSchema,
       default: undefined,
     },
+    interview: {
+      scheduledAt: { type: Date },
+      meetingLink: { type: String, trim: true, maxlength: 2000 },
+      notes: { type: String, trim: true, maxlength: 4000 },
+    },
   },
   { timestamps: true, versionKey: false }
 );

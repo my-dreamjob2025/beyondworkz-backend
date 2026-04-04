@@ -17,6 +17,7 @@ import jobRoutes from "./routes/job.routes.js";
 import applicationRoutes from "./routes/application.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
+import supportRoutes from "./routes/support.routes.js";
 import errorMiddleware from "./middlewares/error.middleware.js";
 import { getAllowedOrigins } from "./config/corsOrigins.js";
 
@@ -79,6 +80,7 @@ app.use("/api/jobs", jobRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/admin", authLimiter, adminRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/support", supportRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });

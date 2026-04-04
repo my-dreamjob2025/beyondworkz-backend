@@ -1,6 +1,10 @@
 import mongoose from "mongoose";
 import User from "../../models/user.model.js";
 import EmployerProfile from "../../models/employerProfile.model.js";
+import JobPost from "../../models/jobPost.model.js";
+import JobApplication from "../../models/jobApplication.model.js";
+import SupportTicket from "../../models/supportTicket.model.js";
+import Notification from "../../models/notification.model.js";
 import { sendResponse } from "../../utils/response.js";
 
 function escapeRegex(s) {
@@ -121,5 +125,36 @@ export const getEmployerById = async (req, res) => {
   } catch (err) {
     console.error("getEmployerById error:", err);
     return sendResponse(res, 500, false, { message: "Internal server error." });
+  }
+};
+
+/** Permanently removes employer user and related jobs, applications, profile, tickets, notifications. */
+export const deleteEmployer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return sendResponse(res, 400, false, { message: "Invalid employer id." });
+    }
+
+    const existing = await User.findOne({ _id: id, role: "employer" }).select("_id").lean();
+    if (!existing) {
+      return sendResponse(res, 404, false, { message: "Employer not found." });
+    }
+
+    await JobApplication.deleteMany({ employer: id });
+    await JobPost.deleteMany({ employer: id });
+    await EmployerProfile.deleteMany({ user: id });
+    await SupportTicket.deleteMany({ user: id });
+    await Notification.deleteMany({ user: id });
+    const result = await User.deleteOne({ _id: id, role: "employer" });
+
+    if (result.deletedCount === 0) {
+      return sendResponse(res, 404, false, { message: "Employer not found." });
+    }
+
+    return sendResponse(res, 200, true, { message: "Employer account deleted." });
+  } catch (err) {
+    console.error("deleteEmployer error:", err);
+    return sendResponse(res, 500, false, { message: "Could not delete employer." });
   }
 };

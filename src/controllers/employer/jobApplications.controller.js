@@ -1,9 +1,14 @@
 import mongoose from "mongoose";
 import JobApplication from "../../models/jobApplication.model.js";
 import JobPost from "../../models/jobPost.model.js";
+import EmployeeProfile from "../../models/employeeProfile.model.js";
 import { sendResponse } from "../../utils/response.js";
 import { formatScreeningForClient } from "../../utils/applicationScreening.js";
 import { createNotificationForUser } from "../../services/notification.service.js";
+import {
+  formatCandidateProfileForEmployer,
+  getResumeDownloadForEmployer,
+} from "../../utils/employerApplicantView.js";
 
 const STATUS_LABELS = {
   submitted: "Submitted",
@@ -174,6 +179,16 @@ export const getEmployerApplicationById = async (req, res) => {
     if (u?.months && u.months !== "00") expParts.push(`${u.months}m`);
 
     const job = row.job;
+
+    let candidateProfile = null;
+    let resume = null;
+    if (u?._id) {
+      const profile = await EmployeeProfile.findOne({ user: u._id }).lean();
+      candidateProfile = formatCandidateProfileForEmployer(profile);
+      resume = await getResumeDownloadForEmployer(profile);
+    }
+
+    const inv = row.interview || {};
     return sendResponse(res, 200, true, {
       application: {
         id: row._id,
@@ -182,6 +197,13 @@ export const getEmployerApplicationById = async (req, res) => {
         updatedAt: row.updatedAt,
         coverLetter: row.coverLetter ? String(row.coverLetter) : "",
         screening: formatScreeningForClient(row.screening),
+        interview: {
+          scheduledAt: inv.scheduledAt || null,
+          meetingLink: inv.meetingLink ? String(inv.meetingLink) : "",
+          notes: inv.notes ? String(inv.notes) : "",
+        },
+        candidateProfile,
+        resume,
         job: job
           ? {
               id: job._id,
@@ -261,5 +283,98 @@ export const patchApplicationStatus = async (req, res) => {
   } catch (err) {
     console.error("patchApplicationStatus error:", err);
     return sendResponse(res, 500, false, { message: "Failed to update status." });
+  }
+};
+
+/** PATCH /employer/applications/:applicationId/interview — schedule or update meeting details */
+export const patchApplicationInterview = async (req, res) => {
+  try {
+    const employerId = req.user.id;
+    const { applicationId } = req.params;
+    const { scheduledAt, meetingLink, notes } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(applicationId)) {
+      return sendResponse(res, 400, false, { message: "Invalid application id." });
+    }
+
+    const app = await JobApplication.findOne({
+      _id: applicationId,
+      employer: employerId,
+    });
+    if (!app) {
+      return sendResponse(res, 404, false, { message: "Application not found." });
+    }
+
+    let shouldNotifyInterview = false;
+
+    if ("scheduledAt" in req.body) {
+      if (scheduledAt === null || scheduledAt === "") {
+        if (!app.interview) app.interview = {};
+        app.interview.scheduledAt = undefined;
+        app.markModified("interview");
+      } else {
+        const d = new Date(scheduledAt);
+        if (Number.isNaN(d.getTime())) {
+          return sendResponse(res, 400, false, { message: "Invalid scheduledAt date." });
+        }
+        if (!app.interview) app.interview = {};
+        app.interview.scheduledAt = d;
+        if (["submitted", "shortlisted"].includes(app.status)) {
+          app.status = "interview_scheduled";
+        }
+        shouldNotifyInterview = true;
+      }
+    }
+
+    if ("meetingLink" in req.body) {
+      if (!app.interview) app.interview = {};
+      const v = meetingLink == null ? "" : String(meetingLink).trim().slice(0, 2000);
+      app.interview.meetingLink = v;
+    }
+
+    if ("notes" in req.body) {
+      if (!app.interview) app.interview = {};
+      const v = notes == null ? "" : String(notes).trim().slice(0, 4000);
+      app.interview.notes = v;
+    }
+
+    await app.save();
+    await app.populate([{ path: "job", select: "title" }]);
+
+    if (shouldNotifyInterview) {
+      const jobTitle = app.job?.title || "the role";
+      try {
+        await createNotificationForUser({
+          userId: app.applicant,
+          type: "application_interview",
+          title: "Interview scheduled",
+          message: `Your application for “${jobTitle}” has an interview or meeting time from the employer.`,
+          meta: {
+            applicationId: String(app._id),
+            jobId: String(app.job?._id || app.job),
+            scheduledAt: app.interview?.scheduledAt,
+          },
+        });
+      } catch (notifyErr) {
+        console.error("patchApplicationInterview notify error:", notifyErr);
+      }
+    }
+
+    const inv = app.interview || {};
+    return sendResponse(res, 200, true, {
+      message: "Interview details saved.",
+      application: {
+        id: app._id,
+        status: app.status,
+        interview: {
+          scheduledAt: inv.scheduledAt || null,
+          meetingLink: inv.meetingLink ? String(inv.meetingLink) : "",
+          notes: inv.notes ? String(inv.notes) : "",
+        },
+      },
+    });
+  } catch (err) {
+    console.error("patchApplicationInterview error:", err);
+    return sendResponse(res, 500, false, { message: "Failed to save interview details." });
   }
 };

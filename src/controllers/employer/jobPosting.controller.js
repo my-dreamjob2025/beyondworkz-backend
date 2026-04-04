@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import User from "../../models/user.model.js";
 import JobPost from "../../models/jobPost.model.js";
+import JobApplication from "../../models/jobApplication.model.js";
 import { sendResponse } from "../../utils/response.js";
 import {
   draftJobSchema,
@@ -59,6 +60,22 @@ async function employerCompanyProfileId(userId) {
   return user?.companyProfile || null;
 }
 
+/** Application counts per job id for this employer (for job list UI). */
+async function applicationCountsByJobIds(employerId, jobDocs) {
+  if (!jobDocs?.length) return new Map();
+  const eid = new mongoose.Types.ObjectId(String(employerId));
+  const jobIds = jobDocs.map((j) => j._id);
+  const rows = await JobApplication.aggregate([
+    { $match: { employer: eid, job: { $in: jobIds } } },
+    { $group: { _id: "$job", count: { $sum: 1 } } },
+  ]);
+  const map = new Map();
+  for (const r of rows) {
+    map.set(String(r._id), r.count);
+  }
+  return map;
+}
+
 export const listEmployerJobs = async (req, res) => {
   try {
     const employerId = req.user.id;
@@ -69,8 +86,12 @@ export const listEmployerJobs = async (req, res) => {
     }
 
     const jobs = await JobPost.find(filter).sort({ updatedAt: -1 }).lean();
+    const countMap = await applicationCountsByJobIds(employerId, jobs);
     return sendResponse(res, 200, true, {
-      jobs: jobs.map((j) => toPublicJob(j)),
+      jobs: jobs.map((j) => ({
+        ...toPublicJob(j),
+        applicationCount: countMap.get(String(j._id)) ?? 0,
+      })),
     });
   } catch (err) {
     console.error("listEmployerJobs error:", err);
@@ -88,7 +109,13 @@ export const getEmployerJob = async (req, res) => {
     if (!job) {
       return sendResponse(res, 404, false, { message: "Job not found." });
     }
-    return sendResponse(res, 200, true, { job: toPublicJob(job) });
+    const applicationCount = await JobApplication.countDocuments({
+      employer: req.user.id,
+      job: job._id,
+    });
+    return sendResponse(res, 200, true, {
+      job: { ...toPublicJob(job), applicationCount },
+    });
   } catch (err) {
     console.error("getEmployerJob error:", err);
     return sendResponse(res, 500, false, { message: "Failed to load job." });

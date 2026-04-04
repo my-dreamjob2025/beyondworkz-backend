@@ -19,6 +19,7 @@ import {
   listEmployerApplications,
   getEmployerApplicationById,
   patchApplicationStatus,
+  patchApplicationInterview,
 } from "../controllers/employer/jobApplications.controller.js";
 
 const router = Router();
@@ -42,6 +43,12 @@ router.patch(
   authMiddleware,
   requireEmployer,
   patchApplicationStatus
+);
+router.patch(
+  "/applications/:applicationId/interview",
+  authMiddleware,
+  requireEmployer,
+  patchApplicationInterview
 );
 
 export default router;
