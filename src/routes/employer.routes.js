@@ -5,7 +5,15 @@ import {
   getMe,
   updateEmployerUser,
   updateCompanyProfile,
+  submitEmployerVerification,
 } from "../controllers/employer/profile.controller.js";
+import {
+  presignEmployerCompanyDoc,
+  confirmEmployerCompanyDoc,
+  uploadEmployerCompanyDocDirect,
+  getEmployerCompanyDocViewUrl,
+} from "../controllers/employer/employerDocuments.controller.js";
+import { employerCompanyDocUpload } from "../middlewares/upload.middleware.js";
 import {
   listEmployerJobs,
   getEmployerJob,
@@ -27,6 +35,28 @@ const router = Router();
 router.get("/me", authMiddleware, requireEmployer, getMe);
 router.patch("/profile", authMiddleware, requireEmployer, updateEmployerUser);
 router.patch("/company", authMiddleware, requireEmployer, updateCompanyProfile);
+router.post("/company/submit-verification", authMiddleware, requireEmployer, submitEmployerVerification);
+
+router.post("/company/documents/presign", authMiddleware, requireEmployer, presignEmployerCompanyDoc);
+router.post("/company/documents/confirm", authMiddleware, requireEmployer, confirmEmployerCompanyDoc);
+router.get("/company/documents/:docType/view-url", authMiddleware, requireEmployer, getEmployerCompanyDocViewUrl);
+router.post(
+  "/company/documents/:docType/upload",
+  authMiddleware,
+  requireEmployer,
+  (req, res, next) => {
+    employerCompanyDocUpload.single("document")(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({
+          success: false,
+          message: err.message || "Upload failed",
+        });
+      }
+      next();
+    });
+  },
+  uploadEmployerCompanyDocDirect
+);
 
 router.get("/jobs", authMiddleware, requireEmployer, listEmployerJobs);
 router.post("/jobs", authMiddleware, requireEmployer, createEmployerJob);

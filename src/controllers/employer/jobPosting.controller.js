@@ -1,8 +1,10 @@
 import mongoose from "mongoose";
 import User from "../../models/user.model.js";
+import EmployerProfile from "../../models/employerProfile.model.js";
 import JobPost from "../../models/jobPost.model.js";
 import JobApplication from "../../models/jobApplication.model.js";
 import { sendResponse } from "../../utils/response.js";
+import { employerCanPostJobs } from "../../utils/employerVerification.js";
 import {
   draftJobSchema,
   publishJobSchema,
@@ -58,6 +60,26 @@ function toPublicJob(job) {
 async function employerCompanyProfileId(userId) {
   const user = await User.findById(userId).select("companyProfile").lean();
   return user?.companyProfile || null;
+}
+
+async function assertEmployerVerifiedForJobs(userId, res) {
+  const user = await User.findById(userId).select("companyProfile").lean();
+  if (!user?.companyProfile) {
+    sendResponse(res, 403, false, {
+      message:
+        "Complete your company profile and admin verification before managing job postings.",
+    });
+    return false;
+  }
+  const profile = await EmployerProfile.findById(user.companyProfile).lean();
+  if (!employerCanPostJobs(profile)) {
+    sendResponse(res, 403, false, {
+      message:
+        "Your company must be verified by an administrator before you can post or edit jobs. Go to Company Profile, upload required documents, and submit for verification.",
+    });
+    return false;
+  }
+  return true;
 }
 
 /** Application counts per job id for this employer (for job list UI). */
@@ -124,6 +146,9 @@ export const getEmployerJob = async (req, res) => {
 
 export const createEmployerJob = async (req, res) => {
   try {
+    const ok = await assertEmployerVerifiedForJobs(req.user.id, res);
+    if (!ok) return;
+
     const body = normalizePayload(req.body || {});
     const status = body.status === "published" ? "published" : "draft";
 
@@ -155,6 +180,9 @@ export const createEmployerJob = async (req, res) => {
 
 export const updateEmployerJob = async (req, res) => {
   try {
+    const ok = await assertEmployerVerifiedForJobs(req.user.id, res);
+    if (!ok) return;
+
     const { jobId } = req.params;
     if (!mongoose.isValidObjectId(jobId)) {
       return sendResponse(res, 400, false, { message: "Invalid job id." });
@@ -220,6 +248,9 @@ export const updateEmployerJob = async (req, res) => {
 
 export const patchEmployerJobStatus = async (req, res) => {
   try {
+    const ok = await assertEmployerVerifiedForJobs(req.user.id, res);
+    if (!ok) return;
+
     const { jobId } = req.params;
     if (!mongoose.isValidObjectId(jobId)) {
       return sendResponse(res, 400, false, { message: "Invalid job id." });

@@ -1,10 +1,12 @@
 import User from "../../models/user.model.js";
 import EmployerProfile from "../../models/employerProfile.model.js";
 import { sendResponse } from "../../utils/response.js";
-import { avatarWithPresignedUrl } from "../../config/s3.config.js";
+import { avatarWithPresignedUrl, getPresignedViewUrl, BUCKET } from "../../config/s3.config.js";
 import { computeEmployerCompletion } from "../../utils/employerCompletion.js";
 import { sendOtpEmail } from "../../config/ses.js";
 import { employerRegisterEmailTemplate } from "../../templates/employer/employerRegisterTemplate.js";
+import { employerProfileEditLocked } from "../../utils/employerVerification.js";
+import { notifyAdmins } from "../../services/notification.service.js";
 
 const COMPANY_TYPES = [
   "Private",
@@ -62,6 +64,23 @@ async function resolveCompanyProfileForUser(userId) {
   return { user, companyProfile };
 }
 
+async function attachVerificationDocUrls(companyProfileObj) {
+  if (!companyProfileObj?.verificationDocuments) return companyProfileObj;
+  const vd = companyProfileObj.verificationDocuments;
+  const next = { ...companyProfileObj, verificationDocuments: { ...vd } };
+  for (const field of ["certificateOfIncorporation", "companyPanCard"]) {
+    const doc = vd[field];
+    if (!doc?.key) continue;
+    if (BUCKET && doc.key && !doc.url?.includes("/uploads/")) {
+      const url = await getPresignedViewUrl(doc.key, 3600);
+      if (url) {
+        next.verificationDocuments[field] = { ...doc, url };
+      }
+    }
+  }
+  return next;
+}
+
 function buildUserResponse(user, completion, avatar) {
   return {
     id: user._id,
@@ -95,10 +114,11 @@ export const getMe = async (req, res) => {
     }
 
     const avatar = user.avatar ? await avatarWithPresignedUrl(user.avatar) : null;
+    const cpObj = await attachVerificationDocUrls(companyProfile.toObject());
 
     return sendResponse(res, 200, true, {
       user: buildUserResponse({ ...user, profileCompletion: completion }, completion, avatar),
-      companyProfile: companyProfile.toObject(),
+      companyProfile: cpObj,
     });
   } catch (err) {
     console.error("getMe employer error:", err);
@@ -149,6 +169,14 @@ export const updateCompanyProfile = async (req, res) => {
   try {
     const userId = req.user.id;
     const { companyDetails, companySocialMedia, address, hiringPreferences, recruiters } = req.body;
+
+    const resolvedPre = await resolveCompanyProfileForUser(userId);
+    if (employerProfileEditLocked(resolvedPre.companyProfile)) {
+      return sendResponse(res, 403, false, {
+        message:
+          "Your company profile is under admin review. You cannot make changes until the review is complete.",
+      });
+    }
 
     const $set = {};
 
@@ -209,8 +237,7 @@ export const updateCompanyProfile = async (req, res) => {
       }
     }
 
-    const resolved = await resolveCompanyProfileForUser(userId);
-    const companyProfile = resolved.companyProfile;
+    const companyProfile = resolvedPre.companyProfile;
 
     const profile = await EmployerProfile.findOneAndUpdate(
       { _id: companyProfile._id },
@@ -274,14 +301,96 @@ export const updateCompanyProfile = async (req, res) => {
     const completion = computeEmployerCompletion(user, profile);
     await User.findByIdAndUpdate(userId, { profileCompletion: completion });
 
+    const cpOut = await attachVerificationDocUrls(profile.toObject());
+
     return sendResponse(res, 200, true, {
       message: "Company profile updated successfully.",
       profileCompletion: completion,
-      companyProfile: profile.toObject(),
+      companyProfile: cpOut,
       invitedTeamMembers,
     });
   } catch (err) {
     console.error("updateCompanyProfile error:", err);
     return sendResponse(res, 500, false, { message: "Failed to update company profile." });
+  }
+};
+
+export const submitEmployerVerification = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const resolved = await resolveCompanyProfileForUser(userId);
+    const profile = resolved.companyProfile;
+    if (!profile) {
+      return sendResponse(res, 404, false, { message: "Company profile not found." });
+    }
+
+    const status = profile.profileStatus;
+    if (status === "pending_review") {
+      return sendResponse(res, 400, false, {
+        message: "Your profile is already submitted and awaiting admin review.",
+      });
+    }
+    if (status === "approved") {
+      return sendResponse(res, 400, false, { message: "Your company is already verified." });
+    }
+    if (status === "suspended") {
+      return sendResponse(res, 403, false, {
+        message: "This company account is suspended. Contact support.",
+      });
+    }
+
+    const cd = profile.companyDetails || {};
+    const addr = profile.address || {};
+    const vd = profile.verificationDocuments || {};
+    const missing = [];
+    if (!String(cd.companyName || "").trim()) missing.push("Company name");
+    if (!String(cd.industryType || "").trim()) missing.push("Industry");
+    if (!String(cd.description || "").trim()) missing.push("Company description");
+    if (!String(addr.addressLine1 || "").trim() && !String(addr.city || "").trim()) {
+      missing.push("Business address (line1 or city)");
+    }
+    if (!vd.certificateOfIncorporation?.key) {
+      missing.push("Certificate of incorporation / company registration document");
+    }
+    if (!vd.companyPanCard?.key) {
+      missing.push("Company PAN card document");
+    }
+
+    if (missing.length) {
+      return sendResponse(res, 400, false, {
+        message: `Complete your profile before submitting: ${missing.join(", ")}.`,
+        missingFields: missing,
+      });
+    }
+
+    profile.profileStatus = "pending_review";
+    profile.verificationSubmittedAt = new Date();
+    profile.adminQuery = undefined;
+    profile.rejectionReason = undefined;
+    await profile.save();
+
+    const user = await User.findById(userId).lean();
+    const companyLabel =
+      String(cd.companyName || "").trim() || user?.email || "Employer";
+
+    try {
+      await notifyAdmins({
+        type: "employer_verification_submitted",
+        title: "Employer verification submitted",
+        message: `${companyLabel} submitted their company profile for verification.`,
+        meta: { employerUserId: String(userId), companyProfileId: String(profile._id) },
+      });
+    } catch (e) {
+      console.error("submitEmployerVerification notifyAdmins:", e);
+    }
+
+    const cpOut = await attachVerificationDocUrls(profile.toObject());
+    return sendResponse(res, 200, true, {
+      message: "Profile submitted for verification. We will notify you once an admin has reviewed it.",
+      companyProfile: cpOut,
+    });
+  } catch (err) {
+    console.error("submitEmployerVerification error:", err);
+    return sendResponse(res, 500, false, { message: "Failed to submit for verification." });
   }
 };

@@ -68,3 +68,39 @@ export const avatarUpload = multer({
     }
   },
 });
+
+const EMPLOYER_DOC_MAX_BYTES = Number(process.env.EMPLOYER_DOC_MAX_BYTES) || 10 * 1024 * 1024;
+const EMPLOYER_DOC_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+];
+
+const employerCompanyDocStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const userId = req.user?.id || "anonymous";
+    const dir = path.join(UPLOADS_BASE, "employer", String(userId), "company-docs");
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const safe = (file.originalname || "document")
+      .replace(/\s+/g, "_")
+      .replace(/[^a-zA-Z0-9_\-\.]/g, "")
+      .slice(0, 100);
+    cb(null, `${Date.now()}_${safe || "document.pdf"}`);
+  },
+});
+
+export const employerCompanyDocUpload = multer({
+  storage: employerCompanyDocStorage,
+  limits: { fileSize: EMPLOYER_DOC_MAX_BYTES },
+  fileFilter: (req, file, cb) => {
+    if (EMPLOYER_DOC_TYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF, JPEG, PNG, or WebP files are allowed"));
+    }
+  },
+});

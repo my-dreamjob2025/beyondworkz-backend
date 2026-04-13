@@ -6,6 +6,24 @@ import JobApplication from "../../models/jobApplication.model.js";
 import SupportTicket from "../../models/supportTicket.model.js";
 import Notification from "../../models/notification.model.js";
 import { sendResponse } from "../../utils/response.js";
+import { getPresignedViewUrl, BUCKET } from "../../config/s3.config.js";
+import { createNotificationForUser } from "../../services/notification.service.js";
+
+async function attachEmployerVerificationDocUrls(companyProfile) {
+  if (!companyProfile?.verificationDocuments) return companyProfile;
+  const o = typeof companyProfile.toObject === "function" ? companyProfile.toObject() : { ...companyProfile };
+  const vd = o.verificationDocuments || {};
+  const next = { ...o, verificationDocuments: { ...vd } };
+  for (const field of ["certificateOfIncorporation", "companyPanCard"]) {
+    const doc = vd[field];
+    if (!doc?.key) continue;
+    if (BUCKET && !doc.url?.includes("/uploads/")) {
+      const url = await getPresignedViewUrl(doc.key, 7200);
+      if (url) next.verificationDocuments[field] = { ...doc, url };
+    }
+  }
+  return next;
+}
 
 function escapeRegex(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -44,7 +62,7 @@ export const listEmployers = async (req, res) => {
         .populate({
           path: "companyProfile",
           select:
-            "companyDetails.companyName companyDetails.industryType verified address.city hiringPreferences",
+            "companyDetails.companyName companyDetails.industryType verified address.city hiringPreferences profileStatus verificationSubmittedAt",
         })
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
@@ -67,6 +85,7 @@ export const listEmployers = async (req, res) => {
       companyName: u.companyProfile?.companyDetails?.companyName || null,
       industryType: u.companyProfile?.companyDetails?.industryType || null,
       companyVerified: u.companyProfile?.verified ?? null,
+      profileStatus: u.companyProfile?.profileStatus ?? null,
       city: u.companyProfile?.address?.city || null,
     }));
 
@@ -99,6 +118,11 @@ export const getEmployerById = async (req, res) => {
       return sendResponse(res, 404, false, { message: "Employer not found." });
     }
 
+    let companyProfile = user.companyProfile || null;
+    if (companyProfile) {
+      companyProfile = await attachEmployerVerificationDocUrls(companyProfile);
+    }
+
     return sendResponse(res, 200, true, {
       employer: {
         id: user._id,
@@ -119,7 +143,7 @@ export const getEmployerById = async (req, res) => {
         termsConsent: user.termsConsent,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
-        companyProfile: user.companyProfile || null,
+        companyProfile,
       },
     });
   } catch (err) {
@@ -129,6 +153,122 @@ export const getEmployerById = async (req, res) => {
 };
 
 /** Permanently removes employer user and related jobs, applications, profile, tickets, notifications. */
+export const patchEmployerVerification = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action, message } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return sendResponse(res, 400, false, { message: "Invalid employer id." });
+    }
+
+    const allowed = ["approve", "reject", "request_revision"];
+    if (!allowed.includes(action)) {
+      return sendResponse(res, 400, false, {
+        message: "action must be approve, reject, or request_revision.",
+      });
+    }
+
+    const msg = typeof message === "string" ? message.trim() : "";
+    if ((action === "reject" || action === "request_revision") && !msg) {
+      return sendResponse(res, 400, false, { message: "A message is required for this action." });
+    }
+
+    const employerUser = await User.findOne({ _id: id, role: "employer" }).select("companyProfile").lean();
+    if (!employerUser?.companyProfile) {
+      return sendResponse(res, 404, false, { message: "Employer or company profile not found." });
+    }
+
+    const profile = await EmployerProfile.findById(employerUser.companyProfile);
+    if (!profile) {
+      return sendResponse(res, 404, false, { message: "Company profile not found." });
+    }
+
+    const st = profile.profileStatus;
+    const adminId = req.user.id;
+
+    if (action === "approve") {
+      if (!["pending_review", "needs_revision"].includes(st)) {
+        return sendResponse(res, 400, false, {
+          message: "You can only approve employers who are in review or were asked to revise their profile.",
+        });
+      }
+      profile.verified = true;
+      profile.profileStatus = "approved";
+      profile.adminQuery = undefined;
+      profile.rejectionReason = undefined;
+      profile.verificationReviewedAt = new Date();
+      profile.verificationReviewedBy = adminId;
+      await profile.save();
+      try {
+        await createNotificationForUser({
+          userId: id,
+          type: "employer_verification_approved",
+          title: "Company verified",
+          message: "Your company profile has been approved. You can now post jobs on Beyond Workz.",
+        });
+      } catch (e) {
+        console.error("patchEmployerVerification notify:", e);
+      }
+    } else if (action === "reject") {
+      if (!["pending_review", "needs_revision"].includes(st)) {
+        return sendResponse(res, 400, false, {
+          message: "You can only reject employers who are in review or awaiting revision.",
+        });
+      }
+      profile.verified = false;
+      profile.profileStatus = "rejected";
+      profile.rejectionReason = msg;
+      profile.adminQuery = undefined;
+      profile.verificationReviewedAt = new Date();
+      profile.verificationReviewedBy = adminId;
+      await profile.save();
+      try {
+        await createNotificationForUser({
+          userId: id,
+          type: "employer_verification_rejected",
+          title: "Company verification declined",
+          message: msg,
+        });
+      } catch (e) {
+        console.error("patchEmployerVerification notify:", e);
+      }
+    } else if (action === "request_revision") {
+      if (st !== "pending_review") {
+        return sendResponse(res, 400, false, {
+          message: "You can only request changes while the employer’s profile is awaiting review.",
+        });
+      }
+      profile.verified = false;
+      profile.profileStatus = "needs_revision";
+      profile.adminQuery = msg;
+      profile.rejectionReason = undefined;
+      profile.verificationReviewedAt = new Date();
+      profile.verificationReviewedBy = adminId;
+      await profile.save();
+      try {
+        await createNotificationForUser({
+          userId: id,
+          type: "employer_verification_revision",
+          title: "Action needed: company profile",
+          message: `Please update your company profile and resubmit: ${msg}`,
+        });
+      } catch (e) {
+        console.error("patchEmployerVerification notify:", e);
+      }
+    }
+
+    const cpOut = await attachEmployerVerificationDocUrls(profile.toObject());
+    return sendResponse(res, 200, true, {
+      message: "Verification updated.",
+      companyProfile: cpOut,
+    });
+  } catch (err) {
+    console.error("patchEmployerVerification error:", err);
+    return sendResponse(res, 500, false, { message: "Internal server error." });
+  }
+};
+
 export const deleteEmployer = async (req, res) => {
   try {
     const { id } = req.params;

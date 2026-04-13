@@ -98,16 +98,54 @@ const employerProfileSchema = new mongoose.Schema(
       },
     ],
 
+    /** KYC: Certificate of Incorporation / registration, company PAN card, etc. */
+    verificationDocuments: {
+      certificateOfIncorporation: {
+        key: String,
+        url: String,
+        fileName: String,
+        contentType: String,
+        size: Number,
+        uploadedAt: Date,
+      },
+      companyPanCard: {
+        key: String,
+        url: String,
+        fileName: String,
+        contentType: String,
+        size: Number,
+        uploadedAt: Date,
+      },
+    },
+
     verified: {
       type: Boolean,
       default: false,
     },
 
+    /**
+     * pending — employer has not submitted for admin review (or is editing after rejection).
+     * pending_review — submitted; awaiting admin.
+     * needs_revision — admin requested changes (see adminQuery).
+     * approved — can post jobs (verified flag should be true).
+     * rejected — admin rejected registration.
+     * suspended — admin suspended the company account.
+     */
     profileStatus: {
       type: String,
-      enum: ["pending", "approved", "rejected", "suspended"],
+      enum: ["pending", "pending_review", "approved", "rejected", "needs_revision", "suspended"],
       default: "pending",
     },
+
+    /** Shown to employer when profileStatus is needs_revision */
+    adminQuery: { type: String, trim: true },
+
+    /** Shown to employer when profileStatus is rejected */
+    rejectionReason: { type: String, trim: true },
+
+    verificationSubmittedAt: Date,
+    verificationReviewedAt: Date,
+    verificationReviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true },
 );
